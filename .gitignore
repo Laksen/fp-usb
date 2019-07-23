@@ -1,0 +1,8 @@
+**.ppu
+**.o
+**.hex
+**.elf
+**.bin
+**.lps
+**.compiled
+**/backup/**
