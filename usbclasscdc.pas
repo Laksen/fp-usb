@@ -1,4 +1,4 @@
-unit usbc_cdc;
+unit USBClassCDC;
 
 interface
 
