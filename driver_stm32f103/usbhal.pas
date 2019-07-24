@@ -27,9 +27,9 @@ type
   TDriverEvent = (deReset, deError,
                   deWakeup, deSuspend,
                   deSOF, deSetup, deRx, deTx);
-  TDriverCallback = procedure(AEvent: TDriverEvent; AEndpoint: byte);
+  TDriverCallback = procedure(AData: pointer; AEvent: TDriverEvent; AEndpoint: byte);
 
-procedure DriverState(AEnabled: boolean; ACallback: TDriverCallback=nil);
+procedure DriverState(AEnabled: boolean; ACallback: TDriverCallback=nil; AData: pointer=nil);
 procedure DriverConnect(AConnect: boolean);
 
 procedure DriverSetAddress(AAddress: byte);
@@ -102,6 +102,7 @@ const
 
 var
   Callback: TDriverCallback = nil;
+  data: pointer;
 
 type
   TBufferDescriptor = record
@@ -171,11 +172,12 @@ begin
   EP_TOGGLE_SET(epr, USB_EP_STAT_RX_VALID, USB_EP_STAT_RX);
 end;
 
-procedure DriverState(AEnabled: boolean; ACallback: TDriverCallback);
+procedure DriverState(AEnabled: boolean; ACallback: TDriverCallback; AData: pointer);
 begin
   if AEnabled then
   begin
     Callback:=ACallback;
+    data:=AData;
 
     // Enable USB Perihepral clock
     RCC.APB1ENR := RCC.APB1ENR or RCC_APB1ENR_USBEN;
@@ -273,7 +275,7 @@ begin
   else
     exit;
 
-  Callback(event, endpoint);
+  Callback(data, event, endpoint);
 end;
 
 function AllocPMA(AEPSize: Word): Word;

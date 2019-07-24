@@ -3,9 +3,9 @@ program test;
 
 uses
   USBCore,
-  usbc_cdc,
+  USBClassCDC,
   consoleio,
-  stm32f103fw, USBd;
+  stm32f103fw, USBd, USBClassMSD;
 
 procedure RCC_Configure;
 begin
@@ -272,7 +272,7 @@ var
   RXBuffer: array[0..CDC_DATA_SZ-1] of char;
   RXPos: longint;
 
-function clb(AEvent: TUSBEvent; AEndpoint: byte; const ARequest: TUsbControlRequest): TUSBResponse;
+function clb(var Device: TUSBDevice; AEvent: TUSBEvent; AEndpoint: byte; const ARequest: TUsbControlRequest): TUSBResponse;
 var
   r: SizeInt;
   buf: array[0..15] of byte;
@@ -299,7 +299,7 @@ begin
         case ARequest.bRequest of
           USB_CDC_REQ_GET_LINE_CODING:
             begin
-              EndpointControlWrite(AEndpoint, @LineCoding, sizeof(LineCoding));
+              EndpointControlWrite(Device, AEndpoint, @LineCoding, sizeof(LineCoding));
             end;                       
           USB_CDC_REQ_SET_LINE_CODING:;
           USB_CDC_REQ_SET_CONTROL_LINE_STATE:;
@@ -311,10 +311,10 @@ begin
       begin      
         case ARequest.bRequest of
           USB_CDC_REQ_SET_LINE_CODING:
-            r:=EndpointControlRead(AEndpoint,@LineCoding,sizeof(LineCoding));
+            r:=EndpointControlRead(Device, AEndpoint,@LineCoding,sizeof(LineCoding));
           USB_CDC_REQ_SET_CONTROL_LINE_STATE:
             begin
-              r:=EndpointControlRead(AEndpoint,@buf[0],sizeof(buf));
+              r:=EndpointControlRead(Device, AEndpoint,@buf[0],sizeof(buf));
             end;
         end;
       end;
@@ -375,6 +375,8 @@ begin
   if ACh=#13 then ACh:=#10;
 end;
 
+var
+  ADevice: TUSBDevice;
 begin
   RCC_Configure;
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD or RCC_APB2Periph_USART1 or RCC_APB2Periph_GPIOA or RCC_APB2Periph_AFIO, Enabled);
@@ -389,7 +391,7 @@ begin
 
   UART_Configure;
 
-  USBd.Enable(True, @clb, devDesc, configDesc, strDesc);
+  USBd.Enable(ADevice, True, @clb, devDesc, configDesc, strDesc);
   USBd.Connect(True);
   GPIO_ResetBits(PortD, GPIO_Pin_2); // Connect pull-up on D+ line
                                                        

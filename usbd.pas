@@ -14,25 +14,6 @@ type
                ueControlRequest, ueControlRX, ueControlDone,
                ueTX, ueRX);
 
-  TUSBCallback = function(AEvent: TUSBEvent; AEndpoint: byte; const ARequest: TUsbControlRequest): TUSBResponse;
-
-procedure Enable(AEnable: boolean; ACallback: TUSBCallback; const ADeviceDesc, AConfigDesc; var AStringDesc: array of PWideChar);
-procedure Connect(AConnect: boolean);
-
-procedure EndpointConfigure(AEndpoint: byte; AEndpointType: TEndpointType; AEndpointSize: SizeInt);
-procedure EndpointDeconfigure(AEndpoint: byte);
-
-function EndpointRead(AEndpoint: byte; AData: Pointer; ASize: SizeInt): SizeInt;
-function EndpointWrite(AEndpoint: byte; AData: Pointer; ASize: SizeInt): SizeInt;
-
-function EndpointControlRead(AEndpoint: byte; AData: Pointer; ASize: SizeInt): SizeInt;
-procedure EndpointControlWrite(AEndpoint: byte; AData: Pointer; ASize: SizeInt);
-
-procedure Poll;
-
-implementation
-
-type
   TControlState = (
     csIdle,             // Setup -> DataOut,DataIn,StatusOut,StatusIn
     csControlDataOut,   // Write -> StatusIn
@@ -47,14 +28,14 @@ type
     dsAddressing, dsAddressed,
     dsConfigured);
 
-type
-  TDevice = record
+  PDevice = ^TUSBDevice;
+  TUSBDevice = record
     Capabilities: word;
     Address,
     Config,
     MaxEp0Size: byte;
 
-    Callback: TUSBCallback;
+    Callback: pointer;
 
     DevDesc,
     CfgDesc: PUsbDescriptor;
@@ -67,30 +48,47 @@ type
     ControlState: TControlState;
     State: TDeviceState;
 
+    DeviceCaps: word;
+
     TXData: PByte;
     TXCount: SizeInt;
     TXExact: boolean;
   end;
 
-var
-  Device: TDevice;
+  TUSBCallback = function(var Device: TUSBDevice; AEvent: TUSBEvent; AEndpoint: byte; const ARequest: TUsbControlRequest): TUSBResponse;
 
-function FindDesc(ADescType, ADescIdx: Byte; out ALength: SizeInt): PUsbDescriptor;
+procedure Enable(var ADevice: TUSBDevice; AEnable: boolean; ACallback: TUSBCallback; const ADeviceDesc, AConfigDesc; var AStringDesc: array of PWideChar);
+procedure Connect(AConnect: boolean);
+
+procedure EndpointConfigure(AEndpoint: byte; AEndpointType: TEndpointType; AEndpointSize: SizeInt);
+procedure EndpointDeconfigure(AEndpoint: byte);
+
+function EndpointRead(AEndpoint: byte; AData: Pointer; ASize: SizeInt): SizeInt;
+function EndpointWrite(AEndpoint: byte; AData: Pointer; ASize: SizeInt): SizeInt;
+
+function EndpointControlRead(var ADevice: TUSBDevice; AEndpoint: byte; AData: Pointer; ASize: SizeInt): SizeInt;
+procedure EndpointControlWrite(var ADevice: TUSBDevice; AEndpoint: byte; AData: Pointer; ASize: SizeInt);
+
+procedure Poll;
+
+implementation
+
+function FindDesc(var ADevice: TUSBDevice; ADescType, ADescIdx: Byte; out ALength: SizeInt): PUsbDescriptor;
 begin
   Result:=nil;
   ALength:=-1;
 
   case ADescType of
-    USB_DESC_TYPE_Device: result:=Device.DevDesc;
+    USB_DESC_TYPE_Device: result:=ADevice.DevDesc;
     USB_DESC_TYPE_Configuration:
       begin
-        result:=Device.CfgDesc;
+        result:=ADevice.CfgDesc;
         ALength:=PUsbConfigurationDescriptor(result)^.wTotalLength;
       end;
     USB_DESC_TYPE_String:
       begin
-        if ADescIdx<Device.StringDescNum then
-          result:=@Device.StringDesc[ADescIdx][1];
+        if ADescIdx<ADevice.StringDescNum then
+          result:=@ADevice.StringDesc[ADescIdx][1];
       end;
   end;
 
@@ -108,20 +106,20 @@ begin
   Result:=USBHAL.EndpointWrite(AEndpoint,AData,ASize);
 end;
 
-function EndpointControlRead(AEndpoint: byte; AData: Pointer; ASize: SizeInt): SizeInt;
+function EndpointControlRead(var ADevice: TUSBDevice; AEndpoint: byte; AData: Pointer; ASize: SizeInt): SizeInt;
 begin
   Result:=USBHAL.EndpointRead(AEndpoint,AData,ASize);
-  Dec(Device.TXCount,Result);
+  Dec(ADevice.TXCount,Result);
 end;
 
-procedure EndpointControlWrite(AEndpoint: byte; AData: Pointer; ASize: SizeInt);
+procedure EndpointControlWrite(var ADevice: TUSBDevice; AEndpoint: byte; AData: Pointer; ASize: SizeInt);
 begin
-  Device.TXData:=AData;
-  Device.TXCount:=ASize;
-  Device.TXExact:=ASize=Device.Request.wLength;
+  ADevice.TXData:=AData;
+  ADevice.TXCount:=ASize;
+  ADevice.TXExact:=ASize=ADevice.Request.wLength;
 end;
 
-function HandleControlRequest(AEndpoint: byte): TUSBResponse;
+function HandleControlRequest(var ADevice: TUSBDevice; AEndpoint: byte): TUSBResponse;
 var
   DescType, DescIdx: Word;
   Desc: PUsbDescriptor;
@@ -129,71 +127,126 @@ var
 begin
   Result:=urStall;
 
-  case Device.Request.bmRequestType and rtTypeMask of
+  case ADevice.Request.bmRequestType and rtTypeMask of
     rtTypeStandard:
       begin
-        case Device.Request.bmRequestType and rtRecipientMask of
+        case ADevice.Request.bmRequestType and rtRecipientMask of
           rtRecipientDevice:
-            case TUsbStandardRequest(Device.Request.bRequest) of
+            case TUsbStandardRequest(ADevice.Request.bRequest) of
               srGetDescriptor:
                 begin
-                  DescType:=Device.Request.wValue shr 8;
-                  DescIdx:=Device.Request.wValue and $FF;
+                  DescType:=ADevice.Request.wValue shr 8;
+                  DescIdx:=ADevice.Request.wValue and $FF;
 
-                  Desc:=FindDesc(DescType, DescIdx, Len);
+                  Desc:=FindDesc(ADevice, DescType, DescIdx, Len);
 
-                  if len>Device.Request.wLength then
-                    Len:=Device.Request.wLength;
+                  if len>ADevice.Request.wLength then
+                    Len:=ADevice.Request.wLength;
 
                   if Desc<>nil then
                   begin
                     result:=urACK;
-                    EndpointControlWrite($80, Desc, Len);
+                    EndpointControlWrite(ADevice, $80, Desc, Len);
                   end;
                 end;
               srSetAddress:
                 begin
                   result:=urACK;
 
-                  Device.Address:=Device.Request.wValue;
-                  Device.State:=dsAddressing;
+                  ADevice.Address:=ADevice.Request.wValue;
+                  if ADevice.Address=0 then
+                    ADevice.State:=dsDefault
+                  else
+                    ADevice.State:=dsAddressing;
                 end;
               srSetConfiguration:
                 begin
                   result:=urACK;
 
-                  Device.Config:=Device.Request.wValue;  
-                  Device.State:=dsConfigured;
+                  ADevice.Config:=ADevice.Request.wValue;
+                  if ADevice.Config=0 then
+                  begin
+                    ADevice.State:=dsAddressed;
 
-                  if assigned(device.Callback) then
-                    Device.Callback(ueConfigured,0,Device.Request);
+                    if assigned(ADevice.Callback) then
+                      TUSBCallback(ADevice.Callback)(ADevice,ueDeconfigured,0,ADevice.Request);
+                  end
+                  else
+                  begin
+                    ADevice.State:=dsConfigured;
+
+                    if assigned(ADevice.Callback) then
+                      TUSBCallback(ADevice.Callback)(ADevice,ueConfigured,0,ADevice.Request);
+                  end;
+                end;
+              srGetConfiguration:
+                begin
+                  result:=urACK;
+                  EndpointControlWrite(ADevice, $80, @ADevice.Config, 1);
+                end;
+              srGetStatus:
+                begin
+                  result:=urACK;
+                  EndpointControlWrite(ADevice, $80, @ADevice.DeviceCaps, 2);
+                end
+            else
+            //  writeln('Unhandled: ',TUsbStandardRequest(ADevice.Request.bRequest));
+            end;
+          rtRecipientInterface:
+            case TUsbStandardRequest(ADevice.Request.bRequest) of
+              srGetStatus:
+                begin
+                  ADevice.Buffer[0]:=0;
+                  ADevice.Buffer[1]:=0;
+
+                  result:=urACK;
+                  EndpointControlWrite(ADevice, $80, @ADevice.Buffer, 2);
                 end;
             end;
-          rtRecipientInterface:;
-          rtRecipientEndpoint:;
+          rtRecipientEndpoint:
+            case TUsbStandardRequest(ADevice.Request.bRequest) of
+              srClearFeature:
+                begin
+                  USBHAL.EndpointSetStall(ADevice.Request.wIndex, false);
+                  result:=urACK;
+                end;
+              srSetFeature:
+                begin
+                  USBHAL.EndpointSetStall(ADevice.Request.wIndex, true);
+                  result:=urACK;
+                end;
+              srGetStatus:
+                begin
+                  ADevice.Buffer[0]:=Ord(USBHAL.EndpointStalled(ADevice.Request.wIndex));
+                  ADevice.Buffer[1]:=0;
+                                      
+                  result:=urACK;
+                  EndpointControlWrite(ADevice, $80, @ADevice.Buffer, 2);
+                end;
+            end;
         end;
       end;
     rtTypeClass:
       begin
-        result:=Device.Callback(ueControlRequest,AEndpoint,Device.Request);
+        result:=TUSBCallback(ADevice.Callback)(ADevice,ueControlRequest,AEndpoint,ADevice.Request);
       end;
   end;
 end;
 
-function DoTransmit: boolean;
+function DoTransmit(var ADevice: TUSBDevice): boolean;
 var
   toSend: SizeInt;
 begin
   result:=False;
 
-  toSend:=Device.TXCount;
-  if toSend>Device.MaxEp0Size then toSend:=Device.MaxEp0Size // Full packet
-  else if toSend<Device.MaxEp0Size then Result:=True // Short packet, ending
-  else if Device.TXExact then Result:=True;
+  toSend:=ADevice.TXCount;
+  if toSend>ADevice.MaxEp0Size then toSend:=ADevice.MaxEp0Size // Full packet
+  else if toSend<ADevice.MaxEp0Size then Result:=True // Short packet, ending
+  else if ADevice.TXExact then Result:=True;
 
-  EndpointWrite($80,Device.TXData,toSend);
-  Inc(Device.TXData,toSend);
-  Dec(Device.TXCount,toSend);
+  EndpointWrite($80,ADevice.TXData,toSend);
+  Inc(ADevice.TXData,toSend);
+  Dec(ADevice.TXCount,toSend);
 end;
 
 procedure EndpointStall(AEndpoint: byte);
@@ -202,38 +255,38 @@ begin
   EndpointSetStall(AEndpoint or $80, True);
 end;
 
-procedure HandleRX(AEndpoint: Byte);
+procedure HandleRX(var ADevice: TUSBDevice; AEndpoint: Byte);
 var
   Read: SizeInt;
 begin
-  case Device.Request.bmRequestType and rtTypeMask of
+  case ADevice.Request.bmRequestType and rtTypeMask of
     rtTypeStandard:
       begin  
-        Read:=USBHAL.EndpointRead(0,@Device.Buffer[0],sizeof(Device.Buffer));
+        Read:=USBHAL.EndpointRead(0,@ADevice.Buffer[0],sizeof(ADevice.Buffer));
 
-        Dec(Device.TXCount,Read);
+        Dec(ADevice.TXCount,Read);
 
         // Do read data
-        if Device.TXCount=0 then
+        if ADevice.TXCount=0 then
         begin
-          Device.ControlState:=csControlStatusIn;
+          ADevice.ControlState:=csControlStatusIn;
           USBHAL.EndpointWrite($80,nil,0);
         end;
       end;
     rtTypeClass:
       begin
-        Device.Callback(ueControlRX,AEndpoint,Device.Request);
+        TUSBCallback(ADevice.Callback)(ADevice,ueControlRX,AEndpoint,ADevice.Request);
 
-        if Device.TXCount=0 then
+        if ADevice.TXCount=0 then
         begin
-          Device.ControlState:=csControlStatusIn;
+          ADevice.ControlState:=csControlStatusIn;
           USBHAL.EndpointWrite($80,nil,0);
         end;
       end;
   end;
 end;
 
-procedure USBCallback(AEvent: TDriverEvent; AEndpoint: byte);
+procedure USBCallback2(var ADevice: TUSBDevice; AEvent: TDriverEvent; AEndpoint: byte);
 var
   Read: SizeInt;
   Response: TUSBResponse;
@@ -242,55 +295,53 @@ begin
     deReset:
       begin
         // Reset state
-        Device.ControlState:=csIdle;
-        Device.State:=dsDefault;
-        Device.Config:=0;
-        Device.Address:=0;
+        ADevice.ControlState:=csIdle;
+        ADevice.State:=dsDefault;
+        ADevice.Config:=0;
+        ADevice.Address:=0;
 
-        // TODO: Signal device deconfigured
-        if assigned(device.Callback) then
-          device.Callback(ueDeconfigured, 0, Device.Request);
+        TUSBCallback(ADevice.Callback)(ADevice,ueDeconfigured, 0, ADevice.Request);
 
-        EndpointConfigure(0, etControl, Device.MaxEp0Size);
+        EndpointConfigure(0, etControl, ADevice.MaxEp0Size);
 
         DriverSetAddress(0);
       end;
     deSetup:
       begin                       
-        Read:=USBHal.EndpointRead(0, @Device.Request, 8);
+        Read:=USBHal.EndpointRead(0, @ADevice.Request, 8);
         if Read<>8 then
           EndpointStall(0)
         else
         begin
-          Response:=HandleControlRequest(AEndpoint);
+          Response:=HandleControlRequest(ADevice, AEndpoint);
 
           if Response=urStall then
             EndpointStall(0)
-          else if (Device.Request.bmRequestType and rtDirectionMask)=rtDirectionToDevice then
+          else if (ADevice.Request.bmRequestType and rtDirectionMask)=rtDirectionToDevice then
           begin
-            if (Device.Request.wLength=0) then
+            if (ADevice.Request.wLength=0) then
             begin
-              Device.ControlState:=csControlStatusIn;
+              ADevice.ControlState:=csControlStatusIn;
               USBHAL.EndpointWrite($80,nil,0);
             end
             else
             begin                                   
-              Device.TXCount:=Device.Request.wLength;
-              Device.ControlState:=csControlDataOut;
+              ADevice.TXCount:=ADevice.Request.wLength;
+              ADevice.ControlState:=csControlDataOut;
             end;
           end
           else
           begin
-            if (Device.Request.wLength=0) then
+            if (ADevice.Request.wLength=0) then
             begin
-              Device.ControlState:=csControlStatusOut
+              ADevice.ControlState:=csControlStatusOut
             end
             else
             begin
-              if DoTransmit() then
-                Device.ControlState:=csControlDataInDone
+              if DoTransmit(ADevice) then
+                ADevice.ControlState:=csControlDataInDone
               else
-                Device.ControlState:=csControlDataIn;
+                ADevice.ControlState:=csControlDataIn;
             end;
           end
         end;
@@ -298,80 +349,81 @@ begin
     deRx:
       begin
         // OUT
-        case Device.ControlState of
+        case ADevice.ControlState of
           csControlDataOut:
             begin
-              HandleRX(AEndpoint);
+              HandleRX(ADevice, AEndpoint);
             end;
           csControlStatusOut:
             begin
-              Read:=USBHAL.EndpointRead(0,@Device.Buffer[0],sizeof(Device.Buffer));
-              Device.ControlState:=csIdle;
+              Read:=USBHAL.EndpointRead(0,@ADevice.Buffer[0],sizeof(ADevice.Buffer));
+              ADevice.ControlState:=csIdle;
             end;
           csIdle:
             begin
               if (AEndpoint and $7F)<>0 then
-              begin
-                Device.Callback(ueRX,AEndpoint,Device.Request);
-              end
+                TUSBCallback(ADevice.Callback)(ADevice,ueRX,AEndpoint,ADevice.Request)
               else
-              begin
-                Read:=USBHAL.EndpointRead(AEndpoint,@Device.Buffer[0],sizeof(Device.Buffer));
-              end;
+                Read:=USBHAL.EndpointRead(AEndpoint,@ADevice.Buffer[0],sizeof(ADevice.Buffer));
             end;
         else                              
-          Read:=USBHAL.EndpointRead(AEndpoint,@Device.Buffer[0],sizeof(Device.Buffer));
+          Read:=USBHAL.EndpointRead(AEndpoint,@ADevice.Buffer[0],sizeof(ADevice.Buffer));
         end;
       end;
     deTx:
       begin
         // IN done         
         if (AEndpoint and $7F)<>0 then
-          Device.Callback(ueTX,AEndpoint,Device.Request)
+          TUSBCallback(ADevice.Callback)(ADevice,ueTX,AEndpoint,ADevice.Request)
         else
-          case Device.ControlState of
+          case ADevice.ControlState of
             csControlDataIn:
               begin
-                if DoTransmit() then
-                  Device.ControlState:=csControlDataInDone
+                if DoTransmit(ADevice) then
+                  ADevice.ControlState:=csControlDataInDone
                 else
-                  Device.ControlState:=csControlDataIn;
+                  ADevice.ControlState:=csControlDataIn;
               end;
             csControlDataInDone:
-              Device.ControlState:=csControlStatusOut;
+              ADevice.ControlState:=csControlStatusOut;
             csControlStatusIn:
               begin
-                case Device.Request.bmRequestType and rtTypeMask of
+                case ADevice.Request.bmRequestType and rtTypeMask of
                   rtTypeClass:
-                    Device.Callback(ueControlDone,AEndpoint,Device.Request);
+                    TUSBCallback(ADevice.Callback)(ADevice,ueControlDone,AEndpoint,ADevice.Request);
                 end;
 
-                case Device.State of
+                case ADevice.State of
                   dsAddressing:
                     begin
-                      USBHAL.DriverSetAddress(Device.Address);
-                      Device.State:=dsAddressed;
+                      USBHAL.DriverSetAddress(ADevice.Address);
+                      ADevice.State:=dsAddressed;
                     end;
                 end;
-                Device.ControlState:=csIdle;
+                ADevice.ControlState:=csIdle;
               end;
           end;
       end;
   end;
 end;
 
-procedure Enable(AEnable: boolean; ACallback: TUSBCallback; const ADeviceDesc, AConfigDesc; var AStringDesc: array of PWideChar);
+procedure USBCallback(AData: pointer; AEvent: TDriverEvent; AEndpoint: byte);
 begin
-  Device.DevDesc:=@ADeviceDesc;
-  Device.CfgDesc:=@AConfigDesc;
-  Device.StringDesc:=@AStringDesc[0];
-  Device.StringDescNum:=length(AStringDesc);
+  USBCallback2(PDevice(AData)^,AEvent,AEndpoint);
+end;
 
-  Device.Callback:=ACallback;
+procedure Enable(var ADevice: TUSBDevice; AEnable: boolean; ACallback: TUSBCallback; const ADeviceDesc, AConfigDesc; var AStringDesc: array of PWideChar);
+begin
+  ADevice.DevDesc:=@ADeviceDesc;
+  ADevice.CfgDesc:=@AConfigDesc;
+  ADevice.StringDesc:=@AStringDesc[0];
+  ADevice.StringDescNum:=length(AStringDesc);
 
-  Device.MaxEp0Size:=8;
+  ADevice.Callback:=ACallback;
 
-  USBHAL.DriverState(AEnable, @USBCallback);
+  ADevice.MaxEp0Size:=8;
+
+  USBHAL.DriverState(AEnable, @USBCallback, @ADevice);
 end;
 
 procedure Connect(AConnect: boolean);
