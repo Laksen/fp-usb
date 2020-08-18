@@ -57,7 +57,7 @@ type
 
   TUSBCallback = function(var Device: TUSBDevice; AEvent: TUSBEvent; AEndpoint: byte; const ARequest: TUsbControlRequest): TUSBResponse;
 
-procedure Enable(var ADevice: TUSBDevice; AEnable: boolean; ACallback: TUSBCallback; const ADeviceDesc, AConfigDesc; var AStringDesc: array of PWideChar);
+procedure Enable(var ADevice: TUSBDevice; AEnable: boolean; ACallback: TUSBCallback; const ADeviceDesc, AConfigDesc; const AStringDesc: array of PWideChar);
 procedure Connect(AConnect: boolean);
 
 procedure EndpointConfigure(AEndpoint: byte; AEndpointType: TEndpointType; AEndpointSize: SizeInt);
@@ -412,7 +412,7 @@ begin
   USBCallback2(PDevice(AData)^,AEvent,AEndpoint);
 end;
 
-procedure Enable(var ADevice: TUSBDevice; AEnable: boolean; ACallback: TUSBCallback; const ADeviceDesc, AConfigDesc; var AStringDesc: array of PWideChar);
+procedure Enable(var ADevice: TUSBDevice; AEnable: boolean; ACallback: TUSBCallback; const ADeviceDesc, AConfigDesc; const AStringDesc: array of PWideChar);
 begin
   ADevice.DevDesc:=@ADeviceDesc;
   ADevice.CfgDesc:=@AConfigDesc;

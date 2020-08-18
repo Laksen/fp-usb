@@ -132,42 +132,42 @@ begin
   epr^ := (epr^ xor (bits)) and (USB_EP_MASK or (mask));
 end;
 
-procedure EP_DTX_UNSTALL(epr: pword);
+procedure EP_DTX_UNSTALL(epr: pword); inline;
 begin
   EP_TOGGLE_SET(epr, USB_EP_STAT_TX_VALID, USB_EP_STAT_TX or USB_EP_DTOG_TX or USB_EP_DTOG_RX);
 end;
 
-procedure EP_TX_STALL(epr: pword);
+procedure EP_TX_STALL(epr: pword); inline;
 begin
   EP_TOGGLE_SET(epr, USB_EP_STAT_TX_STALL, USB_EP_STAT_TX);
 end;
 
-procedure EP_TX_UNSTALL(epr: pword);
+procedure EP_TX_UNSTALL(epr: pword); inline;
 begin
   EP_TOGGLE_SET(epr, USB_EP_STAT_TX_NAK, USB_EP_STAT_TX or USB_EP_DTOG_TX);
 end;
 
-procedure EP_TX_VALID(epr: pword);
+procedure EP_TX_VALID(epr: pword); inline;
 begin
   EP_TOGGLE_SET(epr, USB_EP_STAT_TX_VALID, USB_EP_STAT_TX);
 end;
 
-procedure EP_DRX_UNSTALL(epr: pword);
+procedure EP_DRX_UNSTALL(epr: pword); inline;
 begin
   EP_TOGGLE_SET(epr, USB_EP_STAT_RX_VALID or USB_EP_DTOG_TX, USB_EP_STAT_RX or USB_EP_DTOG_RX or USB_EP_DTOG_TX);
 end;
 
-procedure EP_RX_UNSTALL(epr: pword);
+procedure EP_RX_UNSTALL(epr: pword); inline;
 begin
   EP_TOGGLE_SET(epr, USB_EP_STAT_RX_VALID, USB_EP_STAT_RX or USB_EP_DTOG_RX);
 end;
 
-procedure EP_RX_STALL(epr: pword);
+procedure EP_RX_STALL(epr: pword); inline;
 begin
   EP_TOGGLE_SET(epr, USB_EP_STAT_RX_STALL, USB_EP_STAT_RX);
 end;
 
-procedure EP_RX_VALID(epr: pword);
+procedure EP_RX_VALID(epr: pword); inline;
 begin
   EP_TOGGLE_SET(epr, USB_EP_STAT_RX_VALID, USB_EP_STAT_RX);
 end;
@@ -216,7 +216,7 @@ var
   reg: PLongWord;
   event: TDriverEvent;
   i: integer;
-  istatus, endpoint: Word;
+  istatus, endpoint: longword;
 begin
   istatus := USB.ISTR;
   endpoint := istatus and USB_ISTR_EP_ID;
@@ -278,7 +278,7 @@ begin
   Callback(data, event, endpoint);
 end;
 
-function AllocPMA(AEPSize: Word): Word;
+function AllocPMA(AEPSize: longword): longword;
 const
   USB_PMASIZE = sizeof(USBMem);
 var
@@ -303,7 +303,7 @@ end;
 function EndpointConfigure(AEndpoint: byte; AType: TEndpointType; AEPSize: SizeInt): boolean;
 var
   epr: PWord;
-  epIndex: Byte;
+  epIndex: longword;
   Area, RXCount: SizeInt;
   Desc: PBufferDescriptors;
 const
@@ -397,7 +397,7 @@ end;
 function PMARead(ABuffer: PByte; ALength: LongInt; var ADesc: TBufferDescriptor): SizeInt;
 var
   _pma: PWord;
-  _t: word;
+  _t: longword;
 begin
   _pma:=@PMA[ADesc.Addr];
 
@@ -528,7 +528,7 @@ end;
 
 procedure EndpointSetStall(AEndpoint: byte; AStall: boolean);
 var
-  epIndex: Byte;
+  epIndex: longword;
   epr: PWord;
 begin
   epIndex:=AEndpoint and 7;
