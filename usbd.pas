@@ -30,6 +30,8 @@ type
 
   PDevice = ^TUSBDevice;
   TUSBDevice = record
+    UserData: pointer;
+
     Capabilities: word;
     Address,
     Config,
@@ -421,7 +423,7 @@ begin
 
   ADevice.Callback:=ACallback;
 
-  ADevice.MaxEp0Size:=8;
+  ADevice.MaxEp0Size:=PUsbDeviceDescriptor(@ADevice)^.bMaxPacketSize;
 
   USBHAL.DriverState(AEnable, @USBCallback, @ADevice);
 end;

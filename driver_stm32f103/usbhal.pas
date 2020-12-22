@@ -95,7 +95,7 @@ const
 
   USB_DADDR_EF = 1 shl 7;
 
-  PMASize = sizeof(USBMem);
+  PMASize = 512;
   PMAStep = 2;
 
   USB_EP_MASK = USB_EP_CTR_RX or USB_EP_SETUP or USB_EP_EP_TYPE or USB_EP_EP_KIND or USB_EP_CTR_TX or USB_EP_EA;
@@ -124,7 +124,7 @@ type
   end;
 
 var
-  PMA: array[0..PMASize div 2-1] of word absolute USBMem;
+  PMA: array[0..(PMASize div 2)-1] of longword absolute USBMem;
   BufferDescriptors: array[0..7] of TBufferDescriptors absolute USBMem;
 
 procedure EP_TOGGLE_SET(epr: pword; bits, mask: word); inline;
@@ -399,7 +399,7 @@ var
   _pma: PWord;
   _t: longword;
 begin
-  _pma:=@PMA[ADesc.Addr];
+  _pma:=@PMA[ADesc.Addr shr 1];
 
   Result := ADesc.Count and $3FF;
   ADesc.Count := ADesc.Count and (not $3FF);
@@ -412,7 +412,7 @@ begin
     begin
       _t := _pma^;
 
-      ABuffer^ := _t;
+      ABuffer^ := _t and $FF;
       Inc(ABuffer);
       Dec(ALength);
       if ALength <> 0 then
@@ -432,7 +432,7 @@ procedure PMAWrite(ABuffer: PByte; ALength: LongInt; var ADesc: TBufferDescripto
 var
   _pma: PWord;
 begin
-  _pma:=@PMA[ADesc.Addr];
+  _pma:=@PMA[ADesc.Addr shr 1];
 
   ADesc.Count:=ALength;
   while (ALength > 1) do

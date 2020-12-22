@@ -1,11 +1,13 @@
 // This program demonstrates a simple CDC ACM interface
 program test;
+             
+{$mode objfpc}
+{$modeswitch advancedrecords}
 
 uses
-  USBCore,
-  USBClassCDC,
   consoleio,
-  stm32f103fw, USBd, USBClassMSD;
+  stm32f103fw,
+  simpleusb, simpleusb_cdc;
 
 procedure RCC_Configure;
 begin
@@ -108,149 +110,9 @@ begin
   sendUart := True;
 end;
 
-type
-  TMyDescriptor = packed record
-    Config: TUsbConfigurationDescriptor;
-    CommIntf: TUsbInterfaceDescriptor;
-
-    CdcHeader: TUsbCdcHeaderDescriptor;
-    CdcCall: TUsbCdcCallDescriptor;
-    CdcAcm: TUsbCdcAcmDescriptor;
-    CdcUnion: TUsbCdcUnionDescriptor;
-
-    CommEp: TUsbEndpointDescriptor;
-
-    DataIntf: TUsbInterfaceDescriptor;
-
-    DataEpRx,
-    DataEpTx: TUsbEndpointDescriptor;
-  end;
-
-const
-  CDC_EP0_SIZE = $08;
-  CDC_RXD_EP = $01;
-  CDC_TXD_EP = $81;
-  CDC_DATA_SZ = $40;
-  CDC_NTF_EP = $82;
-  CDC_NTF_SZ = $08;
-
-var
-  Buffer: array[0..127] of byte;
-  strDesc: array[0..3] of PWideChar = (
-    #$0304#$0409,
-    #$0324'Laksen Industries',
-    #$031A'Product 3000',
-    #$0314'00121302');
-
-const
-  configDesc: TMyDescriptor = (
-    Config: (
-      bLength: sizeof(TUsbConfigurationDescriptor);
-      bDescriptorType: USB_DESC_TYPE_Configuration;
-      wTotalLength: SizeOf(TMyDescriptor);
-      bNumInterfaces: 2;
-      bConfigurationValue: 1;
-      iConfiguration: 0;
-      bmAttributes: $C0;
-      bMaxPower: 50
-    );
-    CommIntf: (
-      bLength: sizeof(TUsbInterfaceDescriptor);
-      bDescriptorType: USB_DESC_TYPE_Interface;
-      bInterfaceNumber: 0;
-      bAlternateSetting: 0;
-      bNumEndpoints: 1;
-      bInterfaceClass: USB_CDC_IC_COMM;
-      bInterfaceSubClass: USB_CDC_ISC_ACM;
-      bInterfaceProtocol: USB_CDC_IP_NONE;
-      iInterface: 0;
-    );
-    CdcHeader: (
-      bFunctionLength: sizeof(TUsbCdcHeaderDescriptor);
-      bDescriptorType: USB_DESC_TYPE_CsInterface;
-      bDescriptorSubType: USB_DESC_TYPE_CdcHeader;
-      bcdCDC: $110
-    );
-    CdcCall: (
-      bFunctionLength: sizeof(TUsbCdcCallDescriptor);
-      bDescriptorType: USB_DESC_TYPE_CsInterface;
-      bDescriptorSubType: USB_DESC_TYPE_CdcCall;
-      bmCapabilities: 0;
-      bDataInterface: 1;
-    );
-    CdcAcm: (
-      bFunctionLength: sizeof(TUsbCdcAcmDescriptor);
-      bDescriptorType: USB_DESC_TYPE_CsInterface;
-      bDescriptorSubType: USB_DESC_TYPE_CdcAcm;
-      bmCapabilities: 0;
-    );
-    CdcUnion: (
-      bFunctionLength: sizeof(TUsbCdcUnionDescriptor);
-      bDescriptorType: USB_DESC_TYPE_CsInterface;
-      bDescriptorSubType: USB_DESC_TYPE_CdcUnion;
-      bMasterInterface: 0;
-      bSlaveInterface: 1;
-    );
-    CommEp: (
-      bLength: sizeof(TUsbEndpointDescriptor);
-      bDescriptorType: USB_DESC_TYPE_Endpoint;
-      bEndpointAddress: CDC_NTF_EP;
-      bmAttributes: USB_ENDPOINT_TYPE_Interrupt;
-      wMaxPacketSize: CDC_NTF_SZ;
-      bInterval: $FF;
-    );
-    DataIntf: (
-      bLength: sizeof(TUsbInterfaceDescriptor);
-      bDescriptorType: USB_DESC_TYPE_Interface;
-      bInterfaceNumber: 1;
-      bAlternateSetting: 0;
-      bNumEndpoints: 2;
-      bInterfaceClass: USB_CDC_IC_DATA;
-      bInterfaceSubClass: USB_CDC_ISC_NONE;
-      bInterfaceProtocol: USB_CDC_IP_NONE;
-      iInterface: 0;
-    );
-    DataEpRx: (
-      bLength: sizeof(TUsbEndpointDescriptor);
-      bDescriptorType: USB_DESC_TYPE_Endpoint;
-      bEndpointAddress: CDC_RXD_EP;
-      bmAttributes: USB_ENDPOINT_TYPE_Bulk;
-      wMaxPacketSize: CDC_DATA_SZ;
-      bInterval: $01;
-    );
-    DataEpTx: (
-      bLength: sizeof(TUsbEndpointDescriptor);
-      bDescriptorType: USB_DESC_TYPE_Endpoint;
-      bEndpointAddress: CDC_TXD_EP;
-      bmAttributes: USB_ENDPOINT_TYPE_Bulk;
-      wMaxPacketSize: CDC_DATA_SZ;
-      bInterval: $01;
-    );
-  );
-
-  devDesc: TUsbDeviceDescriptor = (
-    bLength: sizeof(TUsbDeviceDescriptor);
-    bDescriptorType: USB_DESC_TYPE_Device;
-    bcdUsb: $0200;
-    bDeviceClass: 0;
-    bDeviceSubClass: 0;
-    bDeviceProtocol: 0;
-    bMaxPacketSize: CDC_EP0_SIZE;
-    idVendor: $0483;
-    idProduct: $5740;
-    bcdDevice: $100;
-    iManufacturer: 1;
-    iProduct: 2;
-    iSerialNumber: 3;
-    bNumConfigurations: 1
-  );
-
-var
-  LineCoding: TUSB_CDC_ACM_LINE_CODING;
-
 procedure CPSIE; assembler;
 asm
-  cpsie i
+  cpsie if
 end;
 
 var
@@ -266,118 +128,81 @@ var
   i: Integer;
 
 var
-  TXBuffer: array[0..CDC_DATA_SZ-1] of char;
-  TXPos: longint;
+  dev: TSimpleUSBDevice;
+  cdc: TCDCDevice;
+  cdcrx, cdctx: array[0..$40-1] of byte;
 
-  RXBuffer: array[0..CDC_DATA_SZ-1] of char;
-  RXPos: longint;
-
-function clb(var Device: TUSBDevice; AEvent: TUSBEvent; AEndpoint: byte; const ARequest: TUsbControlRequest): TUSBResponse;
-var
-  r: SizeInt;
-  buf: array[0..15] of byte;
-begin        
-  result:=urStall;
-  case AEvent of
-    ueDeconfigured:
-      begin
-        USBd.EndpointDeconfigure(CDC_NTF_EP);
-        USBd.EndpointDeconfigure(CDC_RXD_EP);
-        USBd.EndpointDeconfigure(CDC_TXD_EP);
-      end;
-    ueConfigured:
-      begin
-        USBd.EndpointConfigure(CDC_RXD_EP, etBulk, CDC_DATA_SZ);
-        USBd.EndpointConfigure(CDC_TXD_EP, etBulk, CDC_DATA_SZ);
-        USBd.EndpointConfigure(CDC_NTF_EP, etInterrupt, CDC_NTF_SZ);
-
-        EndpointWrite(CDC_TXD_EP,nil,0);
-      end;
-    ueControlRequest:
-      begin               
-        result:=urACK;
-        case ARequest.bRequest of
-          USB_CDC_REQ_GET_LINE_CODING:
-            begin
-              EndpointControlWrite(Device, AEndpoint, @LineCoding, sizeof(LineCoding));
-            end;                       
-          USB_CDC_REQ_SET_LINE_CODING:;
-          USB_CDC_REQ_SET_CONTROL_LINE_STATE:;
-        else
-          result:=urStall;
-        end;
-      end;
-    ueControlRX:
-      begin      
-        case ARequest.bRequest of
-          USB_CDC_REQ_SET_LINE_CODING:
-            r:=EndpointControlRead(Device, AEndpoint,@LineCoding,sizeof(LineCoding));
-          USB_CDC_REQ_SET_CONTROL_LINE_STATE:
-            begin
-              r:=EndpointControlRead(Device, AEndpoint,@buf[0],sizeof(buf));
-            end;
-        end;
-      end;
-    ueControlDone:
-      begin
-        //writeln('Control done: ', ARequest.bRequest);
-      end;
-    ueRX:
-      begin
-        if RXPos<=High(RXBuffer) then
-        begin
-          r:=EndpointRead(AEndpoint,@RXBuffer[RXPos],sizeof(RXBuffer)-RXPos);
-          if r>0 then inc(RXPos,r);
-        end;
-      end;
-    ueTX:
-      begin
-        r:=USBd.EndpointWrite(CDC_TXD_EP,@TXBuffer[0],TXPos);
-
-        Dec(TXPos,r);
-        Move(TXBuffer[r],TXBuffer[0],TXPos);
-      end;
-  end;
-end;
+  descBuffer: array[0..1023] of byte;
+  strDescBuffer: array[0..1023] of byte;
 
 function UsbSend(ACh: char; AUserData: pointer): boolean;
 begin
   Result:=true;
-  while true do
-  begin
-    if TXPos>high(TXBuffer) then
-      USBd.Poll
-    else
-    begin
-      TXBuffer[TXPos]:=ACh;
-      inc(TXPos);
-      Break;
-    end;
-  end;
+  cdc.Write(ACh, 1);
 end;
 
 function UsbRead(var ACh: char; AUserData: pointer): boolean;
 begin
   Result:=True;
-  while true do
-  begin
-    if RXPos<=0 then
-      USBd.Poll
-    else
-    begin
-      ACh:=RXBuffer[0];
-      Dec(RXPos);
-      if RXPos>0 then Move(RXBuffer[1], RXBuffer[0], RXPos);
-      break;
-    end;
-  end;
+  cdc.Read(ach, 1);
 
   if ACh=#13 then ACh:=#10;
 end;
 
-var
-  ADevice: TUSBDevice;
+procedure ErrHandler(ErrNo : Longint; Address : CodePointer; Frame : Pointer);
 begin
+  writeln('Error!');
+  while true do;
+end;
+
+procedure hard_fault_handler_c(p: plongword; lr: longword);
+begin
+  writeln('Hardfault');
+  writeln(' R0:  ', hexstr(p[0], 8));
+  writeln(' R1:  ', hexstr(p[1], 8));
+  writeln(' R2:  ', hexstr(p[2], 8));
+  writeln(' R3:  ', hexstr(p[3], 8));
+
+  writeln(' R12: ', hexstr(p[4], 8));
+  writeln(' LR:  ', hexstr(p[5], 8));
+  writeln(' PC:  ', hexstr(p[6], 8));
+  writeln(' PSR: ', hexstr(p[7], 8));
+
+  writeln(' LR:  ', hexstr(lr, 8));
+  while true do;
+end;
+
+procedure Hardfault_interrupt; assembler; nostackframe; [public, alias: 'Hardfault_interrupt'];
+asm
+  tst lr, #4
+  mov r1, lr
+  ite eq
+  mrseq r0, msp
+  mrsne r0, psp
+  b hard_fault_handler_c
+end;
+
+procedure MemManage_interrupt; [public, alias: 'MemManage_interrupt']; 
+begin
+  writeln('MemManage_interrupt!');
+  while true do;
+end;
+
+procedure BusFault_interrupt; [public, alias: 'BusFault_interrupt'];   
+begin
+  writeln('BusFault_interrupt!');
+  while true do;
+end;
+
+procedure UsageFault_interrupt; [public, alias: 'UsageFault_interrupt'];
+begin
+  writeln('UsageFault_interrupt!');
+  while true do;
+end;
+
+begin
+  ErrorProc:=@ErrHandler;
+
   RCC_Configure;
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD or RCC_APB2Periph_USART1 or RCC_APB2Periph_GPIOA or RCC_APB2Periph_AFIO, Enabled);
   GPIO_Configure;
@@ -389,19 +214,38 @@ begin
 
   CPSIE;
 
-  UART_Configure;
+  UART_Configure;      
+  consoleio.OpenIO(Output, @sendUart, nil, fmOutput, nil);
 
-  USBd.Enable(ADevice, True, @clb, devDesc, configDesc, strDesc);
-  USBd.Connect(True);
+  writeln('Adding device');
+
+  dev.SetDescriptorBuffer(descBuffer, length(descBuffer));
+  dev.SetStrDescriptorBuffer(strDescBuffer, length(strDescBuffer));
+
+  dev.ConfigureDevice($0483, $5740, $100, 'Laksen Industries', 'Mega CDC thing', '12345678', uv20, 8, 0, 0, 0);
+  writeln('Add cfg');
+  dev.AddConfiguration(1, [caSelfPowered], 300);
+  writeln('Add CDC');
+  dev.AddCDC(cdc, 1, cdcrx, cdctx);
+
+  writeln('Descriptor size: ', dev.GetDescriptorSize);
+  writeln('String descriptor size: ', dev.GetStrDescriptorSize);
+                           
+  writeln('Enabling');
+
+  dev.Enable(8);
+  dev.SetConnected(true);
   GPIO_ResetBits(PortD, GPIO_Pin_2); // Connect pull-up on D+ line
-                                                       
-  //consoleio.OpenIO(Output, @sendUart, nil, fmOutput, nil);
-  consoleio.OpenIO(Output, @UsbSend, nil, fmOutput, nil);
+
+  //consoleio.OpenIO(Output, @UsbSend, nil, fmOutput, nil);
   //consoleio.OpenIO(Input, nil, @UsbRead, fmInput, nil);
+
+  //writeln('Test output');
 
   while True do
   begin
-    USBd.poll;
+    dev.Poll;
+    {USBd.poll;
 
     if systick_ms>=next_tick then
     begin
@@ -416,7 +260,7 @@ begin
         write(RXBuffer[i]);
       RXPos:=0;
       writeln('<');
-    end;
+    end;}
   end;
 end.
 

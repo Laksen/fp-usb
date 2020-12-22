@@ -22,45 +22,11 @@
     </PublishOptions>
     <RunParams>
       <FormatVersion Value="2"/>
+      <Modes Count="0"/>
     </RunParams>
     <Units>
       <Unit>
         <Filename Value="test.lpr"/>
-        <IsPartOfProject Value="True"/>
-      </Unit>
-      <Unit>
-        <Filename Value="usbd.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="USBd"/>
-      </Unit>
-      <Unit>
-        <Filename Value="driver_stm32f103.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit>
-      <Unit>
-        <Filename Value="driverh.inc"/>
-        <IsPartOfProject Value="True"/>
-      </Unit>
-      <Unit>
-        <Filename Value="usbcore.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="USBCore"/>
-      </Unit>
-      <Unit>
-        <Filename Value="stm32f1xxh.inc"/>
-        <IsPartOfProject Value="True"/>
-      </Unit>
-      <Unit>
-        <Filename Value="../usbclassmsd.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="USBClassMSD"/>
-      </Unit>
-      <Unit>
-        <Filename Value="../simpleusb/simpleusb.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit>
-      <Unit>
-        <Filename Value="../simpleusb/simpleusb_cdc.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
     </Units>
@@ -72,39 +38,38 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="..;../driver_stm32f103;../simpleusb"/>
+      <OtherUnitFiles Value="..;../driver_at90usb162"/>
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <CodeGeneration>
-      <SmartLinkUnit Value="True"/>
-      <StackSize Value="4096"/>
-      <TargetProcessor Value="ARMV7M"/>
-      <TargetCPU Value="arm"/>
+      <TargetProcessor Value="AVR35"/>
+      <TargetCPU Value="avr"/>
       <TargetOS Value="embedded"/>
+      <Optimizations>
+        <OptimizationLevel Value="3"/>
+      </Optimizations>
     </CodeGeneration>
     <Linking>
       <Debugging>
         <UseLineInfoUnit Value="False"/>
       </Debugging>
-      <LinkSmart Value="True"/>
     </Linking>
     <Other>
-      <CustomOptions Value="-XParm-none-eabi-
--Wpstm32f103xb
--Oonopeephole"/>
+      <CustomOptions Value="-Wpat90usb162
+-XPavr-"/>
     </Other>
   </CompilerOptions>
   <Debugging>
-    <Exceptions>
-      <Item>
+    <Exceptions Count="3">
+      <Item1>
         <Name Value="EAbort"/>
-      </Item>
-      <Item>
+      </Item1>
+      <Item2>
         <Name Value="ECodetoolError"/>
-      </Item>
-      <Item>
+      </Item2>
+      <Item3>
         <Name Value="EFOpenError"/>
-      </Item>
+      </Item3>
     </Exceptions>
   </Debugging>
 </CONFIG>

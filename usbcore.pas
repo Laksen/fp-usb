@@ -86,6 +86,7 @@ type
     bMaxPower: byte;
   end;
 
+  PUsbInterfaceDescriptor = ^TUsbInterfaceDescriptor;
   TUsbInterfaceDescriptor = packed record
     bLength,
     bDescriptorType,
@@ -98,6 +99,7 @@ type
     iInterface: byte;
   end;
 
+  PUsbEndpointDescriptor = ^TUsbEndpointDescriptor;
   TUsbEndpointDescriptor = packed record
     bLength,
     bDescriptorType,
