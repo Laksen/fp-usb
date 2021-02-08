@@ -90,8 +90,7 @@
     </Linking>
     <Other>
       <CustomOptions Value="-XParm-none-eabi-
--Wpstm32f103xb
--Oonopeephole"/>
+-Wpstm32f103xb"/>
     </Other>
   </CompilerOptions>
   <Debugging>

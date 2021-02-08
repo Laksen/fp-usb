@@ -151,13 +151,13 @@ end;
 
 procedure ErrHandler(ErrNo : Longint; Address : CodePointer; Frame : Pointer);
 begin
-  writeln('Error!');
+  //writeln('Error!');
   while true do;
 end;
 
 procedure hard_fault_handler_c(p: plongword; lr: longword);
 begin
-  writeln('Hardfault');
+  {writeln('Hardfault');
   writeln(' R0:  ', hexstr(p[0], 8));
   writeln(' R1:  ', hexstr(p[1], 8));
   writeln(' R2:  ', hexstr(p[2], 8));
@@ -168,7 +168,7 @@ begin
   writeln(' PC:  ', hexstr(p[6], 8));
   writeln(' PSR: ', hexstr(p[7], 8));
 
-  writeln(' LR:  ', hexstr(lr, 8));
+  writeln(' LR:  ', hexstr(lr, 8));}
   while true do;
 end;
 
@@ -184,22 +184,38 @@ end;
 
 procedure MemManage_interrupt; [public, alias: 'MemManage_interrupt']; 
 begin
-  writeln('MemManage_interrupt!');
+  //writeln('MemManage_interrupt!');
   while true do;
 end;
 
 procedure BusFault_interrupt; [public, alias: 'BusFault_interrupt'];   
 begin
-  writeln('BusFault_interrupt!');
+  //writeln('BusFault_interrupt!');
   while true do;
 end;
 
 procedure UsageFault_interrupt; [public, alias: 'UsageFault_interrupt'];
 begin
-  writeln('UsageFault_interrupt!');
+  //writeln('UsageFault_interrupt!');
   while true do;
 end;
 
+procedure InitUSB;
+begin     
+  dev.SetDescriptorBuffer(descBuffer, length(descBuffer));
+  dev.SetStrDescriptorBuffer(strDescBuffer, length(strDescBuffer));
+
+  dev.ConfigureDevice($0483, $5740, $100, 'Laksen Industries', 'Mega CDC thing', '12345678', uv20, 8, 0, 0, 0);
+  dev.AddConfiguration(1, [caSelfPowered], 300);
+
+  dev.AddCDC(cdc, 1, cdcrx, cdctx);
+
+  dev.Enable(8);
+  dev.SetConnected(true);
+end;
+
+var
+  c: char;
 begin
   ErrorProc:=@ErrHandler;
 
@@ -214,46 +230,32 @@ begin
 
   CPSIE;
 
-  UART_Configure;      
-  consoleio.OpenIO(Output, @sendUart, nil, fmOutput, nil);
+  UART_Configure;
+  //consoleio.OpenIO(Output, @sendUart, nil, fmOutput, nil);
+  //consoleio.OpenIO(input, @UsbSend, nil, fmOutput, nil);
 
-  writeln('Adding device');
+  //writeln('Adding device');
+  InitUSB;
 
-  dev.SetDescriptorBuffer(descBuffer, length(descBuffer));
-  dev.SetStrDescriptorBuffer(strDescBuffer, length(strDescBuffer));
-
-  dev.ConfigureDevice($0483, $5740, $100, 'Laksen Industries', 'Mega CDC thing', '12345678', uv20, 8, 0, 0, 0);
-  writeln('Add cfg');
-  dev.AddConfiguration(1, [caSelfPowered], 300);
-  writeln('Add CDC');
-  dev.AddCDC(cdc, 1, cdcrx, cdctx);
-
-  writeln('Descriptor size: ', dev.GetDescriptorSize);
-  writeln('String descriptor size: ', dev.GetStrDescriptorSize);
-                           
-  writeln('Enabling');
-
-  dev.Enable(8);
-  dev.SetConnected(true);
   GPIO_ResetBits(PortD, GPIO_Pin_2); // Connect pull-up on D+ line
-
-  //consoleio.OpenIO(Output, @UsbSend, nil, fmOutput, nil);
-  //consoleio.OpenIO(Input, nil, @UsbRead, fmInput, nil);
-
-  //writeln('Test output');
 
   while True do
   begin
     dev.Poll;
-    {USBd.poll;
+
+    if cdc.Available>0 then
+    begin
+      cdc.Read(c,1);
+      //write(c);
+    end;
 
     if systick_ms>=next_tick then
     begin
       inc(next_tick,1000);
-      Writeln('Hello world: ', systick_ms);
+      //Writeln(input, 'Hello world: ', systick_ms);
     end;
 
-    if RXPos>0 then
+    {if RXPos>0 then
     begin
       write('>');
       for i:=0 to RXPos-1 do

@@ -704,7 +704,7 @@ end;
 
 procedure TSimpleUSBDevice.Error(AMessage: pchar);
 begin
-  writeln(AMessage);
+  //writeln(AMessage);
 end;
 
 procedure TSimpleUSBDevice.Poll;

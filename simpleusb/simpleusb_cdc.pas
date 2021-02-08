@@ -60,13 +60,15 @@ type
     procedure DoEndpointRX(ADevice: PSimpleUSBDevice; AEndpoint: byte);
     procedure DoEndpointTX(ADevice: PSimpleUSBDevice; AEndpoint: byte);
   public
-    constructor Create(ADevice: PSimpleUSBDevice; ACtrlIntf, ADataIntf, ADataEP, ACtrlEP: byte; var ARXBuffer, ATXBuffer: array of byte);
+    procedure Init(ADevice: PSimpleUSBDevice; ACtrlIntf, ADataIntf, ADataEP, ACtrlEP: byte; var ARXBuffer, ATXBuffer: array of byte);
 
     // Data interface
     function Write(const AData; ASize: SizeInt): SizeInt;
     function Read(var ABuffer; ASize: SizeInt): SizeInt;
 
     property Blocking: boolean read fBlocking write fBlocking;
+
+    property Available: SizeInt read fRXPos;
   end;
 
   TSimpleCDC = record helper for TSimpleUSBDevice
@@ -109,7 +111,7 @@ begin
     end;
   end;
 
-  ADevice:=TCDCDevice.Create(@self, CtrlIntf, DataIntf, DataEP, CtrlEP, ARXBuffer, ATXBuffer);
+  ADevice.Init(@self, CtrlIntf, DataIntf, DataEP, CtrlEP, ARXBuffer, ATXBuffer);
 end;
                
 procedure TCDCDevice.DoConfigure(ADevice: PSimpleUSBDevice; AConfig: byte);
@@ -125,15 +127,14 @@ begin
   if ARequest.wIndex=fCtrlIntf then
   begin
     result:=urACK;
-    writeln(ARequest.bRequest);
+    //writeln('b', ARequest.bRequest, ' ', hexstr(@self), ' ', hexstr(ADevice));
     case ARequest.bRequest of
       USB_CDC_REQ_GET_LINE_CODING:
         begin
           fDevice^.EndpointControlWrite(AEndpoint, @fLineCoding, sizeof(fLineCoding));
         end;
       USB_CDC_REQ_SET_LINE_CODING:;
-      USB_CDC_REQ_SET_CONTROL_LINE_STATE:
-        writeln('alright');
+      USB_CDC_REQ_SET_CONTROL_LINE_STATE:;
     else
       result:=urStall;
     end;
@@ -158,7 +159,7 @@ begin
       USB_CDC_REQ_SET_CONTROL_LINE_STATE:
         begin
           r:=fDevice^.EndpointControlRead(AEndpoint,@buf[0],sizeof(buf));
-          writeln('Read ');
+          //writeln('Read ');
         end;
     end;
   end
@@ -178,15 +179,14 @@ procedure TCDCDevice.DoEndpointRX(ADevice: PSimpleUSBDevice; AEndpoint: byte);
 var
   r: SizeInt;
 begin
-    writeln('iRX');
+  //  writeln('iRX');
   if AEndpoint=fDataEP then
   begin           
-    writeln('RX');
+    //writeln('RX');
     if fRXPos<fRXBufferSize then
     begin
       r:=fDevice^.EndpointRead(AEndpoint,@fRXBuffer[fRXPos],fRXBufferSize-fRXPos);
       if r>0 then inc(fRXPos,r);
-    writeln('RX ', r);
     end;
   end
   else if assigned(fEndpointRXCallback) then
@@ -200,7 +200,7 @@ begin
   if EndpointAddress(AEndpoint)=fDataEP then
   begin
     r:=fDevice^.EndpointWrite(TXEndpoint(fDataEP),@fTXBuffer[0],fTXPos);
-    writeln('tx ', fTXPos,',',r);
+    //writeln('tx ', fTXPos,',',r);
 
     Dec(fTXPos,r);
     Move(fTXBuffer[r],fTXBuffer[0],fTXPos);
@@ -209,7 +209,7 @@ begin
     fEndpointTXCallback(ADevice, AEndpoint);
 end;
 
-constructor TCDCDevice.Create(ADevice: PSimpleUSBDevice; ACtrlIntf, ADataIntf, ADataEP, ACtrlEP: byte; var ARXBuffer, ATXBuffer: array of byte);
+procedure TCDCDevice.Init(ADevice: PSimpleUSBDevice; ACtrlIntf, ADataIntf, ADataEP, ACtrlEP: byte; var ARXBuffer, ATXBuffer: array of byte);
 begin
   fDevice:=ADevice;
 
