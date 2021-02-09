@@ -29,6 +29,9 @@ type
                   deSOF, deSetup, deRx, deTx);
   TDriverCallback = procedure(AData: pointer; AEvent: TDriverEvent; AEndpoint: byte);
 
+const
+  MaxEndpoints = 8;
+
 procedure DriverState(AEnabled: boolean; ACallback: TDriverCallback=nil; AData: pointer=nil);
 procedure DriverConnect(AConnect: boolean);
 
@@ -126,6 +129,8 @@ type
 var
   PMA: array[0..(PMASize div 2)-1] of longword absolute USBMem;
   BufferDescriptors: array[0..7] of TBufferDescriptors absolute USBMem;
+
+  TXEpSizes: array[0..7] of word;
 
 procedure EP_TOGGLE_SET(epr: pword; bits, mask: word); inline;
 begin
@@ -320,7 +325,9 @@ begin
   epr^:=Configs[AType] or epIndex;
 
   if (AType=etcontrol) or IsTXEndpoint(AEndpoint) then
-  begin
+  begin                           
+    TXEpSizes[epIndex]:=AEPSize;
+
     Area:=AllocPMA(AEPSize);
     if Area=0 then Exit(false);
 
@@ -488,6 +495,9 @@ var
 begin
   AEndpoint:=AEndpoint and 7;
   epr:=@USB.EPR[AEndpoint];
+
+  if ALength>TXEpSizes[AEndpoint] then
+    ALength:=TXEpSizes[AEndpoint];
 
   case epr^ and (USB_EP_STAT_TX or USB_EP_EP_TYPE or USB_EP_EP_KIND) of
     // doublebuffered bulk endpoint

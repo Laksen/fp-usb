@@ -13,15 +13,16 @@ const
   USB_ISC_MSD_SCSI = $00;
   USB_ISC_MSD_RBC = $01;
   USB_ISC_MSD_ATAPI = $02;
-  USB_ISC_MSD_UFI = $02;
-  USB_ISC_MSD_SCSI_TRANSPARENT = $03;
-  USB_ISC_MSD_LSD_FS = $04;
-  USB_ISC_MSD_IEEE1667 = $05;
+  USB_ISC_MSD_UFI = $04;
+  USB_ISC_MSD_SCSI_TRANSPARENT = $06;
+  USB_ISC_MSD_LSD_FS = $07;
+  USB_ISC_MSD_IEEE1667 = $08;
 
   // Interface protocol
   USB_IP_MSD_CBI_INTERRUPT = $00;
   USB_IP_MSD_CBI = $01;
   USB_IP_MSD_BBB = $50; // Bulk only
+  USB_IP_MSD_UAS = $62;
 
 type
   TUSBMSDRequest = (
@@ -32,7 +33,8 @@ type
     mrReset = $FF
   );
 
-  TUSBMSDCommandBlockWrapper = packed record
+  {$packrecords 1}
+  TUSBMSDCommandBlockWrapper = record
     dCBWSignature,
     dCBWTag,
     dCBWDataTransferLength: longword;
@@ -45,7 +47,7 @@ type
   TCBWFlag = (fDataOut = 0, fDataIn = $80);
   TCBWFlags = set of TCBWFlag;
 
-  TUSBMSDCommandStatusWrapper = packed record
+  TUSBMSDCommandStatusWrapper = record
     dCSWSignature,
     dCSWTag,
     dCSWDataResidue: longword;

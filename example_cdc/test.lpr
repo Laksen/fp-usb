@@ -7,7 +7,7 @@ program test;
 uses
   consoleio,
   stm32f103fw,
-  simpleusb, simpleusb_cdc;
+  simpleusb, simpleusb_cdc, simpleusb_msd, simpleusb_helpers;
 
 procedure RCC_Configure;
 begin
@@ -129,6 +129,8 @@ var
 
 var
   dev: TSimpleUSBDevice;
+  msd: TMSDDevice;
+
   cdc: TCDCDevice;
   cdcrx, cdctx: array[0..$40-1] of byte;
 
@@ -141,13 +143,13 @@ begin
   cdc.Write(ACh, 1);
 end;
 
-function UsbRead(var ACh: char; AUserData: pointer): boolean;
+{function UsbRead(var ACh: char; AUserData: pointer): boolean;
 begin
   Result:=True;
   cdc.Read(ach, 1);
 
   if ACh=#13 then ACh:=#10;
-end;
+end;}
 
 procedure ErrHandler(ErrNo : Longint; Address : CodePointer; Frame : Pointer);
 begin
@@ -201,7 +203,7 @@ begin
 end;
 
 procedure InitUSB;
-begin     
+begin
   dev.SetDescriptorBuffer(descBuffer, length(descBuffer));
   dev.SetStrDescriptorBuffer(strDescBuffer, length(strDescBuffer));
 
@@ -209,6 +211,7 @@ begin
   dev.AddConfiguration(1, [caSelfPowered], 300);
 
   dev.AddCDC(cdc, 1, cdcrx, cdctx);
+  dev.AddMSD(msd, 1, 64);
 
   dev.Enable(8);
   dev.SetConnected(true);
@@ -231,10 +234,10 @@ begin
   CPSIE;
 
   UART_Configure;
-  //consoleio.OpenIO(Output, @sendUart, nil, fmOutput, nil);
-  //consoleio.OpenIO(input, @UsbSend, nil, fmOutput, nil);
+  consoleio.OpenIO(Output, @sendUart, nil, fmOutput, nil);
+  consoleio.OpenIO(input, @UsbSend, nil, fmOutput, nil);
 
-  //writeln('Adding device');
+  writeln('Adding device');
   InitUSB;
 
   GPIO_ResetBits(PortD, GPIO_Pin_2); // Connect pull-up on D+ line
@@ -243,16 +246,16 @@ begin
   begin
     dev.Poll;
 
-    if cdc.Available>0 then
+    {if cdc.Available>0 then
     begin
       cdc.Read(c,1);
       //write(c);
-    end;
+    end;}
 
     if systick_ms>=next_tick then
     begin
       inc(next_tick,1000);
-      //Writeln(input, 'Hello world: ', systick_ms);
+      Writeln(input, 'Hello world: ', systick_ms);
     end;
 
     {if RXPos>0 then

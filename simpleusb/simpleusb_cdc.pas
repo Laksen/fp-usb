@@ -9,9 +9,6 @@ uses
   simpleusb, USBCore,
   USBClassCDC;
 
-const
-  CDC_DATA_SZ = $40;
-
 type
   TSimpleUSBCDCVersion = (cdcV11);
 
@@ -44,6 +41,8 @@ type
     fTXBuffer: pbyte;
     fTXBufferSize: SizeInt;
     fTXPos: longint;
+                             
+    fTxDone: Boolean;
 
     fRXBuffer: pbyte;
     fRXBufferSize: SizeInt;
@@ -59,6 +58,8 @@ type
 
     procedure DoEndpointRX(ADevice: PSimpleUSBDevice; AEndpoint: byte);
     procedure DoEndpointTX(ADevice: PSimpleUSBDevice; AEndpoint: byte);
+
+    procedure SendMore;
   public
     procedure Init(ADevice: PSimpleUSBDevice; ACtrlIntf, ADataIntf, ADataEP, ACtrlEP: byte; var ARXBuffer, ATXBuffer: array of byte);
 
@@ -71,10 +72,6 @@ type
     property Available: SizeInt read fRXPos;
   end;
 
-  TSimpleCDC = record helper for TSimpleUSBDevice
-    procedure AddCDC(out ADevice: TCDCDevice; AConfigValue: byte; var ARXBuffer, ATXBuffer: array of byte);
-  end;
-
 implementation
 
 type
@@ -83,41 +80,10 @@ type
   PUsbCdcAcmDescriptor    = ^TUsbCdcAcmDescriptor;
   PUsbCdcUnionDescriptor  = ^TUsbCdcUnionDescriptor;
 
-procedure TSimpleCDC.AddCDC(out ADevice: TCDCDevice; AConfigValue: byte; var ARXBuffer, ATXBuffer: array of byte);
-var
-  CtrlIntf, DataIntf, DataEP, CtrlEP: Byte;
-begin
-  CtrlIntf:=AllocateInterface;
-  DataIntf:=AllocateInterface;
-
-  CtrlEP:=AllocateEndpoint;
-  DataEP:=AllocateEndpoint;
-
-  with GetConfig(AConfigValue) do
-  begin
-    with AddInterface(CtrlIntf, 0, USB_CDC_IC_COMM, USB_CDC_ISC_ACM, USB_CDC_IP_NONE) do
-    begin
-      AddCDCHeaderDesc(cdcV11);
-      AddCDCCallDesc(0, DataIntf);
-      AddCDCACMDesc(0);
-      AddCDCUnionDesc(CtrlIntf, DataIntf);
-
-      AddEndpoint(dirFromDevice, CtrlEP, setInterrupt, 8);
-    end;
-    with AddInterface(DataIntf, 0, USB_CDC_IC_DATA, USB_CDC_ISC_NONE, USB_CDC_IP_NONE) do
-    begin
-      AddEndpoint(dirToDevice,   DataEP, setBulk, length(ARXBuffer));
-      AddEndpoint(dirFromDevice, DataEP, setBulk, length(ATXBuffer));
-    end;
-  end;
-
-  ADevice.Init(@self, CtrlIntf, DataIntf, DataEP, CtrlEP, ARXBuffer, ATXBuffer);
-end;
-               
 procedure TCDCDevice.DoConfigure(ADevice: PSimpleUSBDevice; AConfig: byte);
 begin
-  fDevice^.EndpointWrite(TXEndpoint(fDataEP),nil,0);
-  //writeln('fg: ', hexstr(fConfigCallback.Data),',', hexstr(fConfigCallback.Method));
+  //fDevice^.EndpointWrite(TXEndpoint(fDataEP),nil,0);
+  fTxDone:=true;
   if assigned(fConfigCallback) then
     fConfigCallback(ADevice, AConfig);
 end;
@@ -127,7 +93,6 @@ begin
   if ARequest.wIndex=fCtrlIntf then
   begin
     result:=urACK;
-    //writeln('b', ARequest.bRequest, ' ', hexstr(@self), ' ', hexstr(ADevice));
     case ARequest.bRequest of
       USB_CDC_REQ_GET_LINE_CODING:
         begin
@@ -157,10 +122,7 @@ begin
       USB_CDC_REQ_SET_LINE_CODING:
         r:=fDevice^.EndpointControlRead(AEndpoint,@fLineCoding,sizeof(fLineCoding));
       USB_CDC_REQ_SET_CONTROL_LINE_STATE:
-        begin
-          r:=fDevice^.EndpointControlRead(AEndpoint,@buf[0],sizeof(buf));
-          //writeln('Read ');
-        end;
+        r:=fDevice^.EndpointControlRead(AEndpoint,@buf[0],sizeof(buf));
     end;
   end
   else if assigned(fControlRXCallback) then
@@ -179,10 +141,8 @@ procedure TCDCDevice.DoEndpointRX(ADevice: PSimpleUSBDevice; AEndpoint: byte);
 var
   r: SizeInt;
 begin
-  //  writeln('iRX');
   if AEndpoint=fDataEP then
-  begin           
-    //writeln('RX');
+  begin
     if fRXPos<fRXBufferSize then
     begin
       r:=fDevice^.EndpointRead(AEndpoint,@fRXBuffer[fRXPos],fRXBufferSize-fRXPos);
@@ -199,14 +159,26 @@ var
 begin
   if EndpointAddress(AEndpoint)=fDataEP then
   begin
-    r:=fDevice^.EndpointWrite(TXEndpoint(fDataEP),@fTXBuffer[0],fTXPos);
-    //writeln('tx ', fTXPos,',',r);
-
-    Dec(fTXPos,r);
-    Move(fTXBuffer[r],fTXBuffer[0],fTXPos);
+    fTxDone:=true;
+    SendMore;
   end
   else if assigned(fEndpointTXCallback) then
     fEndpointTXCallback(ADevice, AEndpoint);
+end;
+
+procedure TCDCDevice.SendMore;
+var
+  r: SizeInt;
+begin
+  if fTxDone and (fTXPos>0) then
+  begin
+    r:=fDevice^.EndpointWrite(TXEndpoint(fDataEP),@fTXBuffer[0],fTXPos);
+
+    fTxDone:=false;
+
+    Dec(fTXPos,r);
+    Move(fTXBuffer[r],fTXBuffer[0],fTXPos);
+  end;
 end;
 
 procedure TCDCDevice.Init(ADevice: PSimpleUSBDevice; ACtrlIntf, ADataIntf, ADataEP, ACtrlEP: byte; var ARXBuffer, ATXBuffer: array of byte);
@@ -263,7 +235,9 @@ begin
       inc(fTXPos, left);
       dec(ASize, left);
       inc(result,left);
-    end;
+    end;   
+
+    SendMore;
   end;
 end;
 
